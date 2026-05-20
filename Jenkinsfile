@@ -24,7 +24,6 @@ spec:
 
     environment {
         CLUSTER_FILE = "cluster.yaml"
-        PATH = "/usr/local/bin:${env.PATH}"
     }
 
     stages {
@@ -32,6 +31,30 @@ spec:
         stage('Checkout') {
             steps {
                 checkout scm
+            }
+        }
+
+        stage('Debug Kubectl Container') {
+            steps {
+                container('kubectl') {
+                    sh '''
+                        set -e
+
+                        echo "Running inside kubectl container"
+                        echo "User:"
+                        whoami
+
+                        echo "Hostname:"
+                        hostname
+
+                        echo "PATH:"
+                        echo $PATH
+
+                        echo "Checking kubectl:"
+                        which kubectl
+                        kubectl version --client=true
+                    '''
+                }
             }
         }
 
@@ -43,14 +66,24 @@ spec:
 
                         echo "Workspace:"
                         pwd
+
+                        echo "Workspace files:"
                         ls -la
+
+                        echo "Searching files:"
+                        find . -maxdepth 3 -type f | sort
 
                         if [ ! -f "${CLUSTER_FILE}" ]; then
                           echo "ERROR: ${CLUSTER_FILE} not found"
+                          echo "Available cluster files:"
+                          find . -name "cluster.yaml" -o -name "cluster.yml" || true
                           exit 1
                         fi
 
-                        echo "cluster.yaml found."
+                        echo "cluster file found:"
+                        ls -la "${CLUSTER_FILE}"
+
+                        echo "cluster file content:"
                         cat "${CLUSTER_FILE}"
                     '''
                 }
@@ -111,12 +144,20 @@ spec:
                         sh '''
                             set -e
 
+                            echo "Checking kubectl inside Prepare Kubeconfig stage:"
+                            which kubectl
+                            kubectl version --client=true
+
                             mkdir -p .kube
                             cp "${KUBECONFIG_FILE}" .kube/config
                             chmod 600 .kube/config
 
                             echo "Kubeconfig injected from Jenkins credential."
+
+                            echo "Current context:"
                             kubectl --kubeconfig=.kube/config config current-context || true
+
+                            echo "Kubeconfig cluster view:"
                             kubectl --kubeconfig=.kube/config config view --minify
                         '''
                     }
@@ -137,9 +178,17 @@ spec:
                             cp "${KUBECONFIG_FILE}" .kube/config
                             chmod 600 .kube/config
 
-                            echo "Checking cluster access..."
+                            echo "Checking Kubernetes cluster access..."
+
                             kubectl --kubeconfig=.kube/config cluster-info
+
+                            echo ""
+                            echo "Nodes:"
                             kubectl --kubeconfig=.kube/config get nodes -o wide
+
+                            echo ""
+                            echo "Namespaces:"
+                            kubectl --kubeconfig=.kube/config get ns
 
                             echo "Cluster access check passed."
                         '''
@@ -178,9 +227,11 @@ spec:
                             echo "Manifest: ${ARGOCD_MANIFEST_URL}"
                             echo "Service type: ${ARGOCD_SERVICE_TYPE}"
 
+                            echo "Creating namespace if it does not exist..."
                             kubectl --kubeconfig=.kube/config get namespace "${ARGOCD_NAMESPACE}" >/dev/null 2>&1 || \
                               kubectl --kubeconfig=.kube/config create namespace "${ARGOCD_NAMESPACE}"
 
+                            echo "Applying Argo CD manifest..."
                             kubectl --kubeconfig=.kube/config apply \
                               -n "${ARGOCD_NAMESPACE}" \
                               --server-side \
@@ -188,6 +239,8 @@ spec:
                               -f "${ARGOCD_MANIFEST_URL}"
 
                             if [ "${ARGOCD_SERVICE_TYPE}" != "ClusterIP" ]; then
+                              echo "Patching argocd-server service to ${ARGOCD_SERVICE_TYPE}..."
+
                               kubectl --kubeconfig=.kube/config \
                                 -n "${ARGOCD_NAMESPACE}" \
                                 patch svc argocd-server \
@@ -222,7 +275,7 @@ spec:
                               TIMEOUT_SECONDS="600"
                             fi
 
-                            echo "Waiting for Argo CD deployments..."
+                            echo "Waiting for Argo CD deployments in namespace ${ARGOCD_NAMESPACE}..."
 
                             kubectl --kubeconfig=.kube/config \
                               -n "${ARGOCD_NAMESPACE}" \
@@ -268,6 +321,12 @@ spec:
                               get pods -o wide
 
                             echo ""
+                            echo "Argo CD deployments:"
+                            kubectl --kubeconfig=.kube/config \
+                              -n "${ARGOCD_NAMESPACE}" \
+                              get deployments -o wide
+
+                            echo ""
                             echo "Argo CD services:"
                             kubectl --kubeconfig=.kube/config \
                               -n "${ARGOCD_NAMESPACE}" \
@@ -280,7 +339,7 @@ spec:
                               get secret argocd-initial-admin-secret >/dev/null 2>&1; then
                               echo "Initial admin secret exists."
                             else
-                              echo "Initial admin secret not found."
+                              echo "Initial admin secret not found. It may already have been removed or changed."
                             fi
 
                             echo ""
