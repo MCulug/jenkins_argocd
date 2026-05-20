@@ -1,0 +1,12 @@
+cluster_name: rke2-cilium-lab
+
+kubeconfig:
+  credential_id: rke2-kubeconfig
+
+argocd:
+  namespace: argocd
+  install_manifest_url: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+  server_service_type: ClusterIP
+
+checks:
+  timeout_seconds: 600
