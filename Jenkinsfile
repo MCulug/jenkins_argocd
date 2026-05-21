@@ -8,14 +8,20 @@ pipeline {
     stages {
 
         stage('Checkout on Jenkins Controller') {
-            agent any
+            agent {
+                label 'built-in'
+            }
+
             steps {
                 checkout scm
 
                 sh '''
                     set -e
 
-                    echo "Checkout completed on Jenkins controller/regular Jenkins agent."
+                    echo "Checkout completed on Jenkins controller/static node."
+                    echo "Hostname:"
+                    hostname
+
                     echo "Workspace:"
                     pwd
 
@@ -72,7 +78,13 @@ spec:
                                 set -e
 
                                 echo "Repo unstashed inside Kubernetes agent pod."
+                                echo "Hostname:"
+                                hostname
+
+                                echo "Workspace:"
                                 pwd
+
+                                echo "Files:"
                                 find . -maxdepth 3 -type f | sort
 
                                 echo "Checking kubectl:"
@@ -158,7 +170,7 @@ spec:
                                 echo "cluster.yaml:"
                                 cat "${CLUSTER_FILE}"
 
-                                echo "Argo CD manifest path:"
+                                echo "Argo CD manifest:"
                                 ls -la "${ARGOCD_MANIFEST_PATH}"
                             '''
                         }
