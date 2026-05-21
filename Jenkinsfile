@@ -1,6 +1,10 @@
 pipeline {
     agent none
 
+    options {
+        skipDefaultCheckout(true)
+    }
+
     environment {
         CLUSTER_FILE = "cluster.yaml"
     }
